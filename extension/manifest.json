@@ -1,0 +1,33 @@
+{
+  "manifest_version": 3,
+  "name": "X Stock Watcher",
+  "version": "1.0.4",
+  "description": "Monitor selected X accounts and extract stock signals with direct AI analysis.",
+  "permissions": ["alarms", "notifications", "storage"],
+  "host_permissions": ["https://x.com/*"],
+  "optional_host_permissions": ["https://*/*"],
+  "background": { "service_worker": "background.js", "type": "module" },
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "X Stock Watcher",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://x.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
