@@ -2,12 +2,21 @@
 
 A backend-free Chrome extension that monitors selected X accounts and extracts actionable stock signals with an OpenAI-compatible AI endpoint.
 
+[![Install from the Chrome Web Store](https://img.shields.io/badge/Chrome_Web_Store-Install-4285F4?logo=googlechrome&logoColor=white)](https://chromewebstore.google.com/detail/x-stock-watcher/lgalfojcmlmpbkookomohmobkpmcflae)
+
 ## Install
 
-1. Sign in to `x.com` in Chrome.
-2. Open `chrome://extensions` and enable **Developer mode**.
-3. Click **Load unpacked** and select the `extension` folder.
-4. Open **X Stock Watcher**, add accounts, and configure the lookback period.
+### Chrome Web Store
+
+[Install X Stock Watcher from the Chrome Web Store](https://chromewebstore.google.com/detail/x-stock-watcher/lgalfojcmlmpbkookomohmobkpmcflae), sign in to `x.com`, then open the extension to add accounts and configure the lookback period.
+
+### Install from source
+
+1. Download or clone this repository.
+2. Sign in to `x.com` in Chrome.
+3. Open `chrome://extensions` and enable **Developer mode**.
+4. Click **Load unpacked** and select the `extension` folder.
+5. Open **X Stock Watcher**, add accounts, and configure the lookback period.
 
 Chrome must remain open. Each check briefly creates an inactive X profile tab and closes it after reading.
 
