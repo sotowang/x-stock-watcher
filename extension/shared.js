@@ -8,8 +8,6 @@ export const DEFAULTS = {
   aiApiKey: "",
   aiModel: "agnes-2.5-flash",
   discordEnabled: false,
-  discordRelayEndpoint: "",
-  discordRelayToken: "",
   discordWebhookURL: "",
   discordOutbox: [],
   posts: [],

@@ -10,23 +10,23 @@ The extension handles monitored X account names; visible post text, URLs, timest
 
 ## How data is used and stored
 
-This data is used only to provide the extension's monitoring, analysis, notification, dashboard, filtering, export, and optional Discord relay features. Settings, posts, signals, logs, API keys, and relay access tokens are stored locally in Chrome extension storage.
+This data is used only to provide the extension's monitoring, analysis, notification, dashboard, filtering, export, and optional Discord delivery features. Settings, posts, signals, logs, API keys, and the Discord webhook URL are stored locally in Chrome extension storage.
 
 When AI analysis is enabled, the post text and the configured model name are sent directly over HTTPS to the AI endpoint selected by the user. The API key is sent to that endpoint in the Authorization header. The selected AI provider processes this data under its own terms and privacy policy. Users should only configure providers they trust.
 
-When Discord relay delivery is enabled, the extension sends the user-provided Discord webhook URL and structured signal fields—X post ID, account handle, original-post URL and timestamp, subscriber-only flag, ticker, signal type, direction, action, confidence, and a short AI-generated conclusion—to the HTTPS relay server configured by the user. It does not send the full subscriber-only post text or images to the relay. The relay access token is sent in the Authorization header. The relay may retain the destination webhook, delivery identifiers, status, retry metadata, and the structured signal payload for deduplication and reliable delivery to the configured Discord channel.
+When Discord delivery is enabled, the extension sends structured signal fields—account handle, original-post URL and timestamp, ticker, signal type, direction, action, confidence, and a short AI-generated conclusion—directly to the user-provided Discord webhook. It does not send the full subscriber-only post text or images to Discord or to the publisher.
 
 ## Sharing, advertising, and sale
 
-The extension does not sell user data, use it for advertising, or transfer it to data brokers. Data is transferred only to the user-selected AI provider when necessary to perform the requested analysis and, when explicitly enabled, to the user-configured relay and Discord for signal delivery.
+The extension does not sell user data, use it for advertising, or transfer it to data brokers. Data is transferred only to the user-selected AI provider when necessary to perform the requested analysis and, when explicitly enabled, directly to the user-selected Discord webhook.
 
 ## Retention and deletion
 
-Local data remains in Chrome until the user clears signals or logs, removes configuration, clears extension storage, or uninstalls the extension. Data retained by a selected AI provider is controlled by that provider's policy. Relay retention is controlled by the relay operator; the included self-hosted relay can be configured and maintained by the user, who is responsible for deleting old delivery records.
+Local data remains in Chrome until the user clears signals or logs, removes configuration, clears extension storage, or uninstalls the extension. Data retained by a selected AI provider or Discord is controlled by that provider's policy.
 
 ## Security
 
-AI and relay endpoints must use HTTPS. The extension requests access only to X and to HTTPS endpoint domains approved by the user. No system can be guaranteed completely secure, and users are responsible for protecting their API keys and relay tokens.
+AI endpoints and Discord webhooks must use HTTPS. The extension requests access only to X and to HTTPS endpoint domains approved by the user. No system can be guaranteed completely secure, and users are responsible for protecting their API keys and Discord webhook URLs.
 
 ## Chrome Web Store Limited Use
 

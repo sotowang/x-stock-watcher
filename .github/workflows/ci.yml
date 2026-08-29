@@ -25,18 +25,3 @@ jobs:
           node --check extension/shared.js
       - name: Validate manifest
         run: python3 -m json.tool extension/manifest.json >/dev/null
-
-  relay:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: server
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: "1.25"
-          cache-dependency-path: server/go.sum
-      - run: go test ./...
-      - run: go vet ./...
-

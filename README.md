@@ -42,13 +42,11 @@ If AI is disabled, permission is denied, or the request fails, the extension fal
 - Replies and reposts are excluded to keep results focused on the monitored author's original posts.
 - Signals and the latest 500 decision logs are stored locally in Chrome.
 - The dashboard supports combined ticker, account, action, type, and direction filters; sortable table columns; original-post links; and filtered CSV export.
-- Optionally sends every valid signal found in new subscriber-only posts to the included self-hosted Discord relay. Historical baseline posts are never sent.
+- Optionally sends every valid signal found in new subscriber-only posts directly to a user-provided Discord channel webhook. Historical baseline posts are never sent.
 
-## Discord relay
+## Discord delivery
 
-Each extension user selects a destination with a Discord channel webhook. The relay resolves the real Discord channel ID and globally deduplicates posts from multiple extension installations before sending a safe, structured embed. The extension sends no full subscriber-only post text or images.
-
-Deployment and configuration instructions are in [`server/README.md`](server/README.md).
+Each extension user creates a webhook in the desired Discord channel and pastes its URL into the extension. Delivery happens directly from Chrome with a local retry queue; no publisher-operated relay receives the webhook or signal. Local deduplication prevents one installation from resending the same post to the same webhook, but separate installations can still produce duplicates. The extension sends no full subscriber-only post text or images.
 
 ## Privacy and limitations
 

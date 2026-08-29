@@ -28,8 +28,8 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     chrome.tabs.create({ url: chrome.runtime.getURL("dashboard.html") });
     sendResponse({ ok: true });
   }
-  if (message?.type === "TEST_DISCORD_RELAY") {
-    testDiscordRelay(message.endpoint, message.token, message.webhookUrl).then(result => sendResponse(result));
+  if (message?.type === "TEST_DISCORD") {
+    testDiscordWebhook(message.webhookUrl).then(result => sendResponse(result));
     return true;
   }
 });
@@ -310,14 +310,7 @@ function signalSummary(analysis) {
   return analysis.signals.map(signal => `${signal.ticker} / ${signal.direction} / ${signal.action}`).join("; ");
 }
 
-function normalizedRelayEndpoint(endpoint = "") {
-  const trimmed = endpoint.trim().replace(/\/+$/, "");
-  const parsed = new URL(trimmed);
-  if (parsed.protocol !== "https:") throw new Error("Relay server must use HTTPS");
-  return trimmed;
-}
-
-function relayPayload(post) {
+function discordPayload(post) {
   const signals = (post.analysis?.signals || [])
     .slice(0, 10)
     .map(signal => ({
@@ -341,11 +334,11 @@ function relayPayload(post) {
 
 async function enqueueDiscordSignal(post, config) {
   if (!config.discordEnabled || !config.discordWebhookURL) return;
-  const payload = relayPayload(post);
+  const payload = discordPayload(post);
   if (!payload) return;
   payload.discordWebhookUrl = config.discordWebhookURL;
   const { discordOutbox = [] } = await chrome.storage.local.get({ discordOutbox: [] });
-  if (discordOutbox.some(item => item.postId === payload.postId)) return;
+  if (discordOutbox.some(item => item.postId === payload.postId && item.payload.discordWebhookUrl === payload.discordWebhookUrl)) return;
   if (discordOutbox.length >= 200) {
     await appendLogs([{ handle: post.handle, status: "discord_error", reason: "Discord outbox is full; signal was not queued", text: "", postId: post.id, url: post.url }]);
     return;
@@ -355,13 +348,7 @@ async function enqueueDiscordSignal(post, config) {
 }
 
 async function flushDiscordOutbox(config) {
-  if (!config.discordEnabled || !config.discordRelayEndpoint || !config.discordRelayToken) return;
-  let endpoint;
-  try { endpoint = normalizedRelayEndpoint(config.discordRelayEndpoint); }
-  catch (error) {
-    await appendLogs([{ handle: "Discord", status: "discord_error", reason: error.message, text: "", postId: null, url: "" }]);
-    return;
-  }
+  if (!config.discordEnabled || !config.discordWebhookURL) return;
   const now = Date.now();
   const remaining = [];
   const deliveryLogs = [];
@@ -370,14 +357,8 @@ async function flushDiscordOutbox(config) {
     if ((item.nextAttemptAt || 0) > now || attempted >= 20) { remaining.push(item); continue; }
     attempted++;
     try {
-      const response = await fetch(`${endpoint}/v1/subscriber-signals`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.discordRelayToken}` },
-        body: JSON.stringify(item.payload)
-      });
-      const result = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(result.error || `Relay returned HTTP ${response.status}`);
-      deliveryLogs.push({ handle: item.handle, status: result.status === "duplicate" ? "discord_duplicate" : "discord_sent", reason: result.status === "duplicate" ? "Discord relay already accepted this post" : "Subscriber-only signal queued for Discord", text: "", postId: item.postId, url: item.payload.postUrl });
+      await sendDiscordWebhook(item.payload.discordWebhookUrl, item.payload);
+      deliveryLogs.push({ handle: item.handle, status: "discord_sent", reason: "Subscriber-only signal sent to Discord", text: "", postId: item.postId, url: item.payload.postUrl });
     } catch (error) {
       const attempts = (item.attempts || 0) + 1;
       const retryMinutes = Math.min(60, 2 ** Math.min(attempts, 6));
@@ -389,20 +370,58 @@ async function flushDiscordOutbox(config) {
   if (deliveryLogs.length) await appendLogs(deliveryLogs);
 }
 
-async function testDiscordRelay(endpoint, token, webhookUrl) {
+async function testDiscordWebhook(webhookUrl) {
   try {
-    endpoint = normalizedRelayEndpoint(endpoint);
-    const response = await fetch(`${endpoint}/v1/test`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ discordWebhookUrl: webhookUrl })
+    await sendDiscordWebhook(webhookUrl, {
+      handle: "XStockWatcher",
+      postUrl: "https://x.com/",
+      signals: [{ ticker: "TEST", direction: "long", action: "test", confidence: 1, conclusion: "Direct Discord webhook connection is working." }]
     });
-    const result = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(result.error || `Relay returned HTTP ${response.status}`);
     return { ok: true };
   } catch (error) {
     return { ok: false, error: error.message };
   }
+}
+
+async function sendDiscordWebhook(webhookUrl, payload) {
+  const webhook = new URL(webhookUrl);
+  if (webhook.protocol !== "https:" || !["discord.com", "discordapp.com"].includes(webhook.hostname) || !webhook.pathname.startsWith("/api/webhooks/")) {
+    throw new Error("Invalid Discord webhook URL");
+  }
+  webhook.searchParams.set("wait", "true");
+  const fields = payload.signals.map(signal => ({
+    name: `$${signal.ticker} · ${titleWord(signal.direction)} · ${actionLabel(signal.action)}`,
+    value: `${signal.conclusion || "Explicit stock signal"}\n**Confidence:** ${Math.round((Number(signal.confidence) || 0) * 100)}%`,
+    inline: false
+  }));
+  const response = await fetch(webhook.toString(), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      username: "X Stock Watcher",
+      embeds: [{
+        title: `🔒 Subscriber-only signal · @${payload.handle}`,
+        url: payload.postUrl,
+        color: 0xa21caf,
+        fields,
+        footer: { text: "X Stock Watcher · Open the original post to verify access and context" },
+        ...(payload.postTime ? { timestamp: payload.postTime } : {})
+      }],
+      allowed_mentions: { parse: [] }
+    })
+  });
+  if (!response.ok) {
+    if (response.status === 429) throw new Error("Discord rate limited the webhook");
+    throw new Error(`Discord returned HTTP ${response.status}`);
+  }
+}
+
+function titleWord(value = "") {
+  return value ? value[0].toUpperCase() + value.slice(1) : "Signal";
+}
+
+function actionLabel(value = "") {
+  return value.replaceAll("_", " ").replace(/\b\w/g, letter => letter.toUpperCase()) || "Signal";
 }
 
 async function appendLogs(entries) {
