@@ -22,7 +22,11 @@
       const time = timeNode?.getAttribute("datetime") || timeNode?.dateTime || null;
       const isRepost = /reposted|转发了|轉發了/i.test(article.innerText.split("\n").slice(0, 3).join(" "));
       const isPinned = /^(pinned|已置顶|已置頂)$/im.test(article.innerText.split("\n").slice(0, 4).join("\n"));
-      const isSubscriberOnly = /\bsubscribers?\b|订阅者|訂閱者/i.test(article.innerText.split("\n").slice(0, 8).join(" "));
+      const headerLines = article.innerText.split("\n").slice(0, 10).map(line => line.trim());
+      // X labels subscriber-only posts as "Subscribers" in English and
+      // "订阅者" / "訂閱者" in its Chinese interfaces. Match a complete
+      // header line so a normal post mentioning subscribers is not mislabeled.
+      const isSubscriberOnly = headerLines.some(line => /^(subscribers?|订阅者|訂閱者)$/i.test(line));
       // Do not scan the entire article: Chinese engagement buttons contain "回复"
       // on every post. A real reply context includes an @handle next to the label.
       const replying = [...article.querySelectorAll('div[dir="ltr"], span')]

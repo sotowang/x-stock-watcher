@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "X Stock Watcher",
-  "version": "1.0.4",
+  "version": "1.1.0",
   "description": "Monitor selected X accounts and extract stock signals with direct AI analysis.",
   "permissions": ["alarms", "notifications", "storage"],
   "host_permissions": ["https://x.com/*"],

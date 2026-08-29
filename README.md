@@ -36,7 +36,7 @@ If AI is disabled, permission is denied, or the request fails, the extension fal
 ## Scanning behavior
 
 - Scans newest to oldest and reveals the original post when X shows a translation.
-- Captures subscriber-only posts visible to the signed-in X account, expands rendered long-post controls, and can extract multiple ticker signals from one post.
+- Captures subscriber-only posts visible to the signed-in X account, labels their dashboard signals as **Subscriber-only**, includes the flag in CSV exports, expands rendered long-post controls, and can extract multiple ticker signals from one post.
 - Skips previously checked posts without stopping.
 - Stops at the configured lookback boundary, after 500 posts, after three minutes, or when X repeatedly loads no additional posts.
 - Replies and reposts can be included or excluded.
