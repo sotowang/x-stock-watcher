@@ -20,7 +20,7 @@ Key features:
 - Limit scanning to posts from the last 1, 3, 7, 14, or 30 days.
 - Continue past previously checked posts until reaching the configured time boundary.
 - Analyze subscriber-only posts that your X account is authorized to view.
-- Clearly label subscriber-only signals and optionally send new qualifying signals directly to a user-provided Discord channel webhook without transferring the full post text or images.
+- Clearly label subscriber-only signals and optionally send the original post text and extracted signal directly to a user-provided Discord channel webhook. Images are not transferred.
 - Extract multiple tickers and signals from long posts.
 - Classify trade, recommendation, and forecast signals.
 - Identify long/short direction and buy, add, hold, sell, short, cover, or forecast actions.

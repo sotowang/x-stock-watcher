@@ -46,7 +46,7 @@ If AI is disabled, permission is denied, or the request fails, the extension fal
 
 ## Discord delivery
 
-Each extension user creates a webhook in the desired Discord channel and pastes its URL into the extension. Delivery happens directly from Chrome with a local retry queue; no publisher-operated relay receives the webhook or signal. Local deduplication prevents one installation from resending the same post to the same webhook, but separate installations can still produce duplicates. The extension sends no full subscriber-only post text or images.
+Each extension user creates a webhook in the desired Discord channel and pastes its URL into the extension. Delivery happens directly from Chrome with a local retry queue; no publisher-operated relay receives the webhook or signal. Local deduplication prevents one installation from resending the same post to the same webhook, but separate installations can still produce duplicates. The original post text is included in the Discord message; long posts are attached as `original-post.txt`. Images are not transferred.
 
 ## Privacy and limitations
 

@@ -14,7 +14,7 @@ This data is used only to provide the extension's monitoring, analysis, notifica
 
 When AI analysis is enabled, the post text and the configured model name are sent directly over HTTPS to the AI endpoint selected by the user. The API key is sent to that endpoint in the Authorization header. The selected AI provider processes this data under its own terms and privacy policy. Users should only configure providers they trust.
 
-When Discord delivery is enabled, the extension sends structured signal fields—account handle, original-post URL and timestamp, ticker, signal type, direction, action, confidence, and a short AI-generated conclusion—directly to the user-provided Discord webhook. It does not send the full subscriber-only post text or images to Discord or to the publisher.
+When Discord delivery is enabled, the extension sends the original post text and structured signal fields—account handle, original-post URL and timestamp, ticker, signal type, direction, action, and a short AI-generated conclusion—directly to the user-provided Discord webhook. Long post text may be delivered as a text attachment. Images are not sent to Discord, and neither the webhook nor the content is sent to the publisher.
 
 ## Sharing, advertising, and sale
 

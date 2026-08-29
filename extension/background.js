@@ -184,6 +184,7 @@ async function ingestPosts(expectedHandle, scraped, config) {
   const analysisLogs = [];
   for (const post of candidates) {
     const analysis = await analyze(post, config);
+    if (analysis.ai_error) analysisLogs.push(postLog(post, expectedHandle, "ai_error", analysis.ai_error));
     if (!isRelevant(analysis)) {
       analysisLogs.push(postLog(post, expectedHandle, "ignored", `${post.isSubscriberOnly ? "Subscriber post · " : ""}${analysis?.ignore_reason || "AI returned no valid trading signal"}`));
       continue;
@@ -326,7 +327,6 @@ function discordPayload(post) {
       type: signal.signal_type,
       direction: signal.direction,
       action: signal.action,
-      confidence: Number(signal.confidence) || 0,
       conclusion: String(signal.conclusion || "").slice(0, 500)
     }));
   if (!post.isSubscriberOnly || !signals.length) return null;
@@ -335,6 +335,7 @@ function discordPayload(post) {
     handle: post.handle,
     postUrl: post.url,
     postTime: post.time || post.capturedAt,
+    originalText: String(post.text || ""),
     subscriberOnly: true,
     signals
   };
@@ -358,19 +359,24 @@ async function enqueueDiscordSignal(post, config) {
 
 async function queueStoredSubscriberSignals(config) {
   if (!config.discordEnabled || !config.discordWebhookURL) return;
-  let changed = false;
-  const posts = [];
+  const analysisUpdates = new Map();
+  const aiLogs = [];
   for (const storedPost of config.posts || []) {
     let post = storedPost;
     const shouldRetryAI = post.isSubscriberOnly && config.useAI && post.analysis?.analyzer === "rules" && (!post.analysis.ai_retry_at || post.analysis.ai_retry_at <= Date.now());
     if (shouldRetryAI) {
       post = { ...post, analysis: await analyze(post, config) };
-      changed = true;
+      analysisUpdates.set(post.id, post.analysis);
+      if (post.analysis.ai_error) aiLogs.push(postLog(post, post.handle, "ai_error", post.analysis.ai_error));
     }
-    posts.push(post);
     if (post.isSubscriberOnly && isRelevant(post.analysis)) await enqueueDiscordSignal(post, config);
   }
-  if (changed) await chrome.storage.local.set({ posts });
+  if (analysisUpdates.size) {
+    const latest = await storageGet();
+    const posts = latest.posts.map(post => analysisUpdates.has(post.id) ? { ...post, analysis: analysisUpdates.get(post.id) } : post);
+    await chrome.storage.local.set({ posts });
+  }
+  if (aiLogs.length) await appendLogs(aiLogs);
 }
 
 async function flushDiscordOutbox(config) {
@@ -403,7 +409,8 @@ async function testDiscordWebhook(webhookUrl) {
     await sendDiscordWebhook(webhookUrl, {
       handle: "XStockWatcher",
       postUrl: "https://x.com/",
-      signals: [{ ticker: "TEST", direction: "long", action: "test", confidence: 1, conclusion: "Direct Discord webhook connection is working." }]
+      originalText: "This is a test message from X Stock Watcher.",
+      signals: [{ ticker: "TEST", direction: "long", action: "test", conclusion: "Direct Discord webhook connection is working." }]
     });
     return { ok: true };
   } catch (error) {
@@ -419,25 +426,33 @@ async function sendDiscordWebhook(webhookUrl, payload) {
   webhook.searchParams.set("wait", "true");
   const fields = payload.signals.map(signal => ({
     name: `$${signal.ticker} · ${titleWord(signal.direction)} · ${actionLabel(signal.action)}`,
-    value: `${signal.conclusion || "Explicit stock signal"}\n**Confidence:** ${Math.round((Number(signal.confidence) || 0) * 100)}%`,
+    value: signal.conclusion || "Explicit stock signal",
     inline: false
   }));
-  const response = await fetch(webhook.toString(), {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      username: "X Stock Watcher",
-      embeds: [{
-        title: `🔒 Subscriber-only signal · @${payload.handle}`,
-        url: payload.postUrl,
-        color: 0xa21caf,
-        fields,
-        footer: { text: "X Stock Watcher · Open the original post to verify access and context" },
-        ...(payload.postTime ? { timestamp: payload.postTime } : {})
-      }],
-      allowed_mentions: { parse: [] }
-    })
-  });
+  const message = {
+    username: "X Stock Watcher",
+    embeds: [{
+      title: `🔒 Subscriber-only signal · @${payload.handle}`,
+      url: payload.postUrl,
+      color: 0xa21caf,
+      fields,
+      footer: { text: "X Stock Watcher · Open the original post to verify access and context" },
+      ...(payload.postTime ? { timestamp: payload.postTime } : {})
+    }],
+    allowed_mentions: { parse: [] }
+  };
+  const originalText = String(payload.originalText || "").trim();
+  let request;
+  if (originalText.length > 1900) {
+    const form = new FormData();
+    form.append("payload_json", JSON.stringify(message));
+    form.append("files[0]", new Blob([originalText], { type: "text/plain;charset=utf-8" }), "original-post.txt");
+    request = { method: "POST", body: form };
+  } else {
+    if (originalText) message.content = `**Original post**\n${originalText}`;
+    request = { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(message) };
+  }
+  const response = await fetch(webhook.toString(), request);
   if (!response.ok) {
     if (response.status === 429) throw new Error("Discord rate limited the webhook");
     throw new Error(`Discord returned HTTP ${response.status}`);
