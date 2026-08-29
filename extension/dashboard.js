@@ -1,7 +1,7 @@
 import { storageGet, escapeHtml } from "./shared.js";
 let allPosts = [];
 let allLogs = [];
-let tableSort = { key: "confidence", direction: "desc" };
+let tableSort = { key: "time", direction: "desc" };
 const $ = id => document.getElementById(id);
 const actionLabels = {buy:"Buy",add:"Add",hold:"Hold",sell:"Sell / reduce",short:"Open short",cover:"Cover short",forecast_up:"Bullish target",forecast_down:"Bearish target"};
 const typeLabels = {trade:"Trade",recommendation:"Recommendation",forecast:"Forecast"};
