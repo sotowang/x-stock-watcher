@@ -17,7 +17,12 @@ chrome.alarms.onAlarm.addListener(alarm => {
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type === "CONFIG_CHANGED") {
-    configureAlarm().then(() => sendResponse({ ok: true }));
+    configureAlarm().then(async () => {
+      const config = await storageGet();
+      await queueStoredSubscriberSignals(config);
+      await flushDiscordOutbox(await storageGet());
+      sendResponse({ ok: true });
+    });
     return true;
   }
   if (message?.type === "POLL_NOW") {
@@ -185,11 +190,12 @@ async function ingestPosts(expectedHandle, scraped, config) {
     }
     const record = { ...post, analysis, capturedAt: new Date().toISOString(), baseline: firstRun };
     analyzed.push(record);
-    analysisLogs.push(postLog(post, expectedHandle, "recorded", `${post.isSubscriberOnly ? "Subscriber post · " : ""}${signalSummary(analysis)}`));
+    const fallbackNote = analysis.ai_error ? `AI fallback (${analysis.ai_error}) · ` : "";
+    analysisLogs.push(postLog(post, expectedHandle, "recorded", `${post.isSubscriberOnly ? "Subscriber post · " : ""}${fallbackNote}${signalSummary(analysis)}`));
     if (!firstRun) {
       await notify(record);
-      await enqueueDiscordSignal(record, config);
     }
+    await enqueueDiscordSignal(record, config);
   }
   if (analysisLogs.length) await appendLogs(analysisLogs);
 
@@ -227,6 +233,7 @@ async function analyze(post, config) {
     } catch (error) {
       const fallback = ruleAnalysis(post.text);
       fallback.ai_error = error.message;
+      fallback.ai_retry_at = Date.now() + 60 * 60 * 1000;
       if (!fallback.relevant) fallback.ignore_reason = `AI unavailable; local rules found no explicit signal (${error.message})`;
       return fallback;
     }
@@ -235,7 +242,7 @@ async function analyze(post, config) {
 }
 
 const AI_SYSTEM_PROMPT = `You are a strict stock trade-signal extractor. The input is normally the author's ORIGINAL English post. Return JSON only:
-{"relevant":false,"signals":[{"ticker":"TSLA","signal_type":"trade|recommendation|forecast","direction":"long|short","action":"buy|add|hold|sell|short|cover|forecast_up|forecast_down","horizon":"intraday|short|swing|long|unclear","entry_price":null,"target_price":null,"stop_price":null,"condition":null,"confidence":0.0,"conclusion":"one concise English sentence"}],"ignore_reason":"short English reason"}
+{"relevant":false,"signals":[{"ticker":"TSLA","signal_type":"trade|recommendation|forecast","direction":"long|short","action":"buy|add|hold|sell|short|cover|forecast_up|forecast_down","horizon":"intraday|short|swing|long|unclear","entry_price":null,"target_price":null,"stop_price":null,"condition":null,"confidence":0.0,"conclusion":"one concise English sentence summarizing the author's position, rationale, condition and target when present"}],"ignore_reason":"short English reason"}
 Include a signal only for the author's own current trade/position, a concrete intended trade, explicit recommendation, or concrete directional forecast with a target price or technical trigger. Preserve negation and conditions. Use trade for actual actions/positions, recommendation for explicit advice, and forecast for directional targets without a stated trade. A target or technical trigger is not automatically a buy. Ignore news, generic commentary, completed historical profit recaps, motivation, questions without a view, watchlists, quoted third-party trades, and vague bullishness. A completed past trade is not a current position. Ticker must be a listed stock/ETF symbol, never ordinary words such as NEXT, WEEK, AI, CEO, USD, LONG, SHORT, BUY or SELL. direction=long for buy/add/hold/sell/forecast_up and short for short/cover/forecast_down. Exclude confidence below 0.65.`;
 
 function parseAIAnalysis(content) {
@@ -270,6 +277,7 @@ function ruleAnalysis(text = "") {
     ["hold", "long", /\b(holding|hold|staying long)\b|持有|继续拿|繼續持有/i]
   ];
   const matched = tests.find(([, , regex]) => regex.test(text));
+  const excerpt = text.replace(/\s+/g, " ").trim().slice(0, 220);
   const signals = matched ? tickers.map(ticker => ({
     ticker,
     signal_type: "trade",
@@ -280,7 +288,7 @@ function ruleAnalysis(text = "") {
     target_price: null,
     stop_price: null,
     confidence: 0.66,
-    conclusion: `Rule-based detection: ${matched[0]}`
+    conclusion: `Local fallback: $${ticker} ${matched[0]} signal.${excerpt ? ` Context: ${excerpt}` : ""}`
   })) : [];
   return {
     relevant: signals.length > 0,
@@ -337,14 +345,32 @@ async function enqueueDiscordSignal(post, config) {
   const payload = discordPayload(post);
   if (!payload) return;
   payload.discordWebhookUrl = config.discordWebhookURL;
-  const { discordOutbox = [] } = await chrome.storage.local.get({ discordOutbox: [] });
-  if (discordOutbox.some(item => item.postId === payload.postId && item.payload.discordWebhookUrl === payload.discordWebhookUrl)) return;
+  const { discordOutbox = [], discordDeliveredKeys = [] } = await chrome.storage.local.get({ discordOutbox: [], discordDeliveredKeys: [] });
+  const deliveryKey = `${payload.discordWebhookUrl}|${payload.postId}`;
+  if (discordDeliveredKeys.includes(deliveryKey) || discordOutbox.some(item => item.deliveryKey === deliveryKey)) return;
   if (discordOutbox.length >= 200) {
     await appendLogs([{ handle: post.handle, status: "discord_error", reason: "Discord outbox is full; signal was not queued", text: "", postId: post.id, url: post.url }]);
     return;
   }
-  const entry = { postId: payload.postId, handle: post.handle, payload, attempts: 0, nextAttemptAt: 0 };
+  const entry = { deliveryKey, postId: payload.postId, handle: post.handle, payload, attempts: 0, nextAttemptAt: 0 };
   await chrome.storage.local.set({ discordOutbox: [...discordOutbox, entry] });
+}
+
+async function queueStoredSubscriberSignals(config) {
+  if (!config.discordEnabled || !config.discordWebhookURL) return;
+  let changed = false;
+  const posts = [];
+  for (const storedPost of config.posts || []) {
+    let post = storedPost;
+    const shouldRetryAI = post.isSubscriberOnly && config.useAI && post.analysis?.analyzer === "rules" && (!post.analysis.ai_retry_at || post.analysis.ai_retry_at <= Date.now());
+    if (shouldRetryAI) {
+      post = { ...post, analysis: await analyze(post, config) };
+      changed = true;
+    }
+    posts.push(post);
+    if (post.isSubscriberOnly && isRelevant(post.analysis)) await enqueueDiscordSignal(post, config);
+  }
+  if (changed) await chrome.storage.local.set({ posts });
 }
 
 async function flushDiscordOutbox(config) {
@@ -352,12 +378,14 @@ async function flushDiscordOutbox(config) {
   const now = Date.now();
   const remaining = [];
   const deliveryLogs = [];
+  const delivered = new Set(config.discordDeliveredKeys || []);
   let attempted = 0;
   for (const item of config.discordOutbox || []) {
     if ((item.nextAttemptAt || 0) > now || attempted >= 20) { remaining.push(item); continue; }
     attempted++;
     try {
       await sendDiscordWebhook(item.payload.discordWebhookUrl, item.payload);
+      delivered.add(item.deliveryKey || `${item.payload.discordWebhookUrl}|${item.postId}`);
       deliveryLogs.push({ handle: item.handle, status: "discord_sent", reason: "Subscriber-only signal sent to Discord", text: "", postId: item.postId, url: item.payload.postUrl });
     } catch (error) {
       const attempts = (item.attempts || 0) + 1;
@@ -366,7 +394,7 @@ async function flushDiscordOutbox(config) {
       deliveryLogs.push({ handle: item.handle, status: "discord_error", reason: `${error.message}; retry scheduled`, text: "", postId: item.postId, url: item.payload.postUrl });
     }
   }
-  await chrome.storage.local.set({ discordOutbox: remaining });
+  await chrome.storage.local.set({ discordOutbox: remaining, discordDeliveredKeys: [...delivered].slice(-2000) });
   if (deliveryLogs.length) await appendLogs(deliveryLogs);
 }
 
@@ -468,4 +496,8 @@ function waitForTab(tabId, timeout) {
 }
 
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
-configureAlarm();
+configureAlarm().then(async () => {
+  const config = await storageGet();
+  await queueStoredSubscriberSignals(config);
+  await flushDiscordOutbox(await storageGet());
+});
