@@ -29,7 +29,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     sendResponse({ ok: true });
   }
   if (message?.type === "TEST_DISCORD_RELAY") {
-    testDiscordRelay(message.endpoint, message.token).then(result => sendResponse(result));
+    testDiscordRelay(message.endpoint, message.token, message.webhookUrl).then(result => sendResponse(result));
     return true;
   }
 });
@@ -340,9 +340,10 @@ function relayPayload(post) {
 }
 
 async function enqueueDiscordSignal(post, config) {
-  if (!config.discordEnabled) return;
+  if (!config.discordEnabled || !config.discordWebhookURL) return;
   const payload = relayPayload(post);
   if (!payload) return;
+  payload.discordWebhookUrl = config.discordWebhookURL;
   const { discordOutbox = [] } = await chrome.storage.local.get({ discordOutbox: [] });
   if (discordOutbox.some(item => item.postId === payload.postId)) return;
   if (discordOutbox.length >= 200) {
@@ -388,13 +389,13 @@ async function flushDiscordOutbox(config) {
   if (deliveryLogs.length) await appendLogs(deliveryLogs);
 }
 
-async function testDiscordRelay(endpoint, token) {
+async function testDiscordRelay(endpoint, token, webhookUrl) {
   try {
     endpoint = normalizedRelayEndpoint(endpoint);
     const response = await fetch(`${endpoint}/v1/test`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: "{}"
+      body: JSON.stringify({ discordWebhookUrl: webhookUrl })
     });
     const result = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(result.error || `Relay returned HTTP ${response.status}`);

@@ -19,7 +19,10 @@ func testApp(t *testing.T, webhook string) *app {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { db.Close() })
-	return newApp(db, config{DiscordWebhook: webhook, ChannelKey: "test", Tokens: []string{"secret"}, DailyTokenLimit: 100})
+	a := newApp(db, config{Tokens: []string{"secret"}, DailyTokenLimit: 100})
+	a.webhookURL = webhook
+	a.resolveChannel = func(context.Context, string) (string, error) { return "test-channel", nil }
+	return a
 }
 
 func validPayload() signalPayload {
@@ -27,7 +30,8 @@ func validPayload() signalPayload {
 		PostID: "1961234567890123456", Handle: "Brownmoose",
 		PostURL:  "https://x.com/Brownmoose/status/1961234567890123456",
 		PostTime: "2026-08-29T08:00:00Z", SubscriberOnly: true,
-		Signals: []signal{{Ticker: "ORCL", Type: "forecast", Direction: "long", Action: "forecast_up", Confidence: .82, Conclusion: "The author expects ORCL to continue higher."}},
+		DiscordWebhook: "https://discord.com/api/webhooks/1/token",
+		Signals:        []signal{{Ticker: "ORCL", Type: "forecast", Direction: "long", Action: "forecast_up", Confidence: .82, Conclusion: "The author expects ORCL to continue higher."}},
 	}
 }
 
@@ -48,6 +52,22 @@ func TestSignalEndpointDeduplicates(t *testing.T) {
 		t.Fatalf("first response: %d %s", first.Code, first.Body.String())
 	}
 	second := postJSON(t, a.routes(), "/v1/subscriber-signals", validPayload())
+	if second.Code != http.StatusOK || !strings.Contains(second.Body.String(), "duplicate") {
+		t.Fatalf("second response: %d %s", second.Code, second.Body.String())
+	}
+}
+
+func TestDifferentWebhooksForSameChannelDeduplicate(t *testing.T) {
+	a := testApp(t, "https://discord.com/api/webhooks/1/token")
+	firstPayload := validPayload()
+	firstPayload.DiscordWebhook = "https://discord.com/api/webhooks/1/first-token"
+	first := postJSON(t, a.routes(), "/v1/subscriber-signals", firstPayload)
+	if first.Code != http.StatusAccepted {
+		t.Fatalf("first response: %d %s", first.Code, first.Body.String())
+	}
+	secondPayload := validPayload()
+	secondPayload.DiscordWebhook = "https://discord.com/api/webhooks/2/second-token"
+	second := postJSON(t, a.routes(), "/v1/subscriber-signals", secondPayload)
 	if second.Code != http.StatusOK || !strings.Contains(second.Body.String(), "duplicate") {
 		t.Fatalf("second response: %d %s", second.Code, second.Body.String())
 	}

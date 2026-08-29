@@ -46,7 +46,7 @@ If AI is disabled, permission is denied, or the request fails, the extension fal
 
 ## Discord relay
 
-The optional relay globally deduplicates posts from multiple extension installations before sending a safe, structured Discord embed. The Discord webhook stays on your server; the extension sends no full subscriber-only post text or images.
+Each extension user selects a destination with a Discord channel webhook. The relay resolves the real Discord channel ID and globally deduplicates posts from multiple extension installations before sending a safe, structured embed. The extension sends no full subscriber-only post text or images.
 
 Deployment and configuration instructions are in [`server/README.md`](server/README.md).
 

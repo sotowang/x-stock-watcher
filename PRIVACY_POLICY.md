@@ -14,7 +14,7 @@ This data is used only to provide the extension's monitoring, analysis, notifica
 
 When AI analysis is enabled, the post text and the configured model name are sent directly over HTTPS to the AI endpoint selected by the user. The API key is sent to that endpoint in the Authorization header. The selected AI provider processes this data under its own terms and privacy policy. Users should only configure providers they trust.
 
-When Discord relay delivery is enabled, the extension sends only structured signal fields—X post ID, account handle, original-post URL and timestamp, subscriber-only flag, ticker, signal type, direction, action, confidence, and a short AI-generated conclusion—to the HTTPS relay server configured by the user. It does not send the full subscriber-only post text or images to the relay. The relay access token is sent in the Authorization header. The relay may retain delivery identifiers, status, retry metadata, and the structured signal payload for deduplication and reliable delivery to the configured Discord channel.
+When Discord relay delivery is enabled, the extension sends the user-provided Discord webhook URL and structured signal fields—X post ID, account handle, original-post URL and timestamp, subscriber-only flag, ticker, signal type, direction, action, confidence, and a short AI-generated conclusion—to the HTTPS relay server configured by the user. It does not send the full subscriber-only post text or images to the relay. The relay access token is sent in the Authorization header. The relay may retain the destination webhook, delivery identifiers, status, retry metadata, and the structured signal payload for deduplication and reliable delivery to the configured Discord channel.
 
 ## Sharing, advertising, and sale
 

@@ -10,6 +10,7 @@ export const DEFAULTS = {
   discordEnabled: false,
   discordRelayEndpoint: "",
   discordRelayToken: "",
+  discordWebhookURL: "",
   discordOutbox: [],
   posts: [],
   logs: [],

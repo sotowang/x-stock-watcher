@@ -35,8 +35,6 @@ var (
 type config struct {
 	ListenAddr      string
 	DatabasePath    string
-	DiscordWebhook  string
-	ChannelKey      string
 	Tokens          []string
 	DailyTokenLimit int
 }
@@ -47,6 +45,7 @@ type signalPayload struct {
 	PostURL        string   `json:"postUrl"`
 	PostTime       string   `json:"postTime,omitempty"`
 	SubscriberOnly bool     `json:"subscriberOnly"`
+	DiscordWebhook string   `json:"discordWebhookUrl"`
 	Signals        []signal `json:"signals"`
 }
 
@@ -60,15 +59,15 @@ type signal struct {
 }
 
 type app struct {
-	db           *sql.DB
-	webhookURL   string
-	channelKey   string
-	tokenHashes  map[string]struct{}
-	dailyLimit   int
-	client       *http.Client
-	wake         chan struct{}
-	rateMu       sync.Mutex
-	rateCounters map[string]int
+	db             *sql.DB
+	webhookURL     string // test-only override; production uses the payload destination
+	tokenHashes    map[string]struct{}
+	dailyLimit     int
+	client         *http.Client
+	wake           chan struct{}
+	rateMu         sync.Mutex
+	rateCounters   map[string]int
+	resolveChannel func(context.Context, string) (string, error)
 }
 
 func main() {
@@ -112,20 +111,12 @@ func loadConfig() (config, error) {
 	cfg := config{
 		ListenAddr:      envOr("LISTEN_ADDR", "127.0.0.1:8787"),
 		DatabasePath:    envOr("DATABASE_PATH", "./data/relay.db"),
-		DiscordWebhook:  strings.TrimSpace(os.Getenv("DISCORD_WEBHOOK_URL")),
-		ChannelKey:      envOr("DISCORD_CHANNEL_KEY", "default"),
 		DailyTokenLimit: envInt("DAILY_TOKEN_LIMIT", 200),
 	}
 	for _, token := range strings.Split(os.Getenv("INGEST_TOKENS"), ",") {
 		if token = strings.TrimSpace(token); token != "" {
 			cfg.Tokens = append(cfg.Tokens, token)
 		}
-	}
-	if cfg.DiscordWebhook == "" {
-		return cfg, errors.New("DISCORD_WEBHOOK_URL is required")
-	}
-	if _, err := validatedWebhookURL(cfg.DiscordWebhook); err != nil {
-		return cfg, err
 	}
 	if len(cfg.Tokens) == 0 {
 		return cfg, errors.New("INGEST_TOKENS must contain at least one access token")
@@ -179,7 +170,7 @@ func newApp(db *sql.DB, cfg config) *app {
 		hashes[hashToken(token)] = struct{}{}
 	}
 	return &app{
-		db: db, webhookURL: cfg.DiscordWebhook, channelKey: cfg.ChannelKey,
+		db:          db,
 		tokenHashes: hashes, dailyLimit: cfg.DailyTokenLimit,
 		client: &http.Client{Timeout: 10 * time.Second}, wake: make(chan struct{}, 1),
 		rateCounters: make(map[string]int),
@@ -231,11 +222,16 @@ func (a *app) handleSignal(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": err.Error()})
 		return
 	}
+	channelID, err := a.discordChannelID(r.Context(), payload.DiscordWebhook)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "Discord webhook could not be verified"})
+		return
+	}
 	encoded, _ := json.Marshal(payload)
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	result, err := a.db.Exec(`INSERT OR IGNORE INTO deliveries
 		(channel_key, post_id, payload, status, created_at, updated_at)
-		VALUES (?, ?, ?, 'pending', ?, ?)`, a.channelKey, payload.PostID, string(encoded), now, now)
+		VALUES (?, ?, ?, 'pending', ?, ?)`, channelID, payload.PostID, string(encoded), now, now)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"ok": false, "error": "database error"})
 		return
@@ -250,10 +246,23 @@ func (a *app) handleSignal(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *app) handleTest(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBytes)
+	var destination struct {
+		DiscordWebhook string `json:"discordWebhookUrl"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&destination); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "invalid JSON payload"})
+		return
+	}
+	if _, err := validatedWebhookURL(destination.DiscordWebhook); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": err.Error()})
+		return
+	}
 	payload := signalPayload{
 		PostID: "test", Handle: "XStockWatcher", PostURL: "https://x.com/",
 		PostTime: time.Now().UTC().Format(time.RFC3339), SubscriberOnly: true,
-		Signals: []signal{{Ticker: "TEST", Type: "trade", Direction: "long", Action: "test", Confidence: 1, Conclusion: "Discord relay connection is working."}},
+		DiscordWebhook: destination.DiscordWebhook,
+		Signals:        []signal{{Ticker: "TEST", Type: "trade", Direction: "long", Action: "test", Confidence: 1, Conclusion: "Discord relay connection is working."}},
 	}
 	messageID, retryAfter, permanent, err := a.sendDiscord(r.Context(), payload)
 	if err != nil {
@@ -271,6 +280,10 @@ func validatePayload(payload *signalPayload) error {
 	payload.PostID = strings.TrimSpace(payload.PostID)
 	payload.Handle = strings.TrimPrefix(strings.TrimSpace(payload.Handle), "@")
 	payload.PostURL = strings.TrimSpace(payload.PostURL)
+	payload.DiscordWebhook = strings.TrimSpace(payload.DiscordWebhook)
+	if _, err := validatedWebhookURL(payload.DiscordWebhook); err != nil {
+		return err
+	}
 	if !payload.SubscriberOnly {
 		return errors.New("only subscriber-only posts are accepted")
 	}
@@ -421,9 +434,15 @@ func (a *app) sendDiscord(ctx context.Context, payload signalPayload) (string, t
 		"username": "X Stock Watcher", "embeds": []any{embed},
 		"allowed_mentions": map[string]any{"parse": []string{}},
 	})
-	webhook, err := url.Parse(a.webhookURL)
+	var webhook *url.URL
+	var err error
+	if a.webhookURL != "" {
+		webhook, err = url.Parse(a.webhookURL)
+	} else {
+		webhook, err = validatedWebhookURL(payload.DiscordWebhook)
+	}
 	if err != nil {
-		return "", 0, true, errors.New("invalid configured Discord webhook URL")
+		return "", 0, true, err
 	}
 	query := webhook.Query()
 	query.Set("wait", "true")
@@ -461,9 +480,38 @@ func (a *app) sendDiscord(ctx context.Context, payload signalPayload) (string, t
 func validatedWebhookURL(raw string) (*url.URL, error) {
 	parsed, err := url.Parse(raw)
 	if err != nil || parsed.Scheme != "https" || (parsed.Hostname() != "discord.com" && parsed.Hostname() != "discordapp.com") || !strings.HasPrefix(parsed.Path, "/api/webhooks/") {
-		return nil, errors.New("DISCORD_WEBHOOK_URL must be an HTTPS Discord webhook URL")
+		return nil, errors.New("discordWebhookUrl must be an HTTPS Discord webhook URL")
 	}
 	return parsed, nil
+}
+
+func (a *app) discordChannelID(ctx context.Context, webhookURL string) (string, error) {
+	if a.resolveChannel != nil {
+		return a.resolveChannel(ctx, webhookURL)
+	}
+	webhook, err := validatedWebhookURL(webhookURL)
+	if err != nil {
+		return "", err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, webhook.String(), nil)
+	if err != nil {
+		return "", err
+	}
+	response, err := a.client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer response.Body.Close()
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return "", fmt.Errorf("Discord returned HTTP %d", response.StatusCode)
+	}
+	var metadata struct {
+		ChannelID string `json:"channel_id"`
+	}
+	if err := json.NewDecoder(io.LimitReader(response.Body, 32<<10)).Decode(&metadata); err != nil || metadata.ChannelID == "" {
+		return "", errors.New("Discord webhook has no channel ID")
+	}
+	return metadata.ChannelID, nil
 }
 
 func (a *app) validTokenHash(hash string) bool { _, ok := a.tokenHashes[hash]; return ok }

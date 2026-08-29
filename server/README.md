@@ -1,6 +1,6 @@
 # Self-hosted Discord relay
 
-The relay accepts structured subscriber-only stock signals from X Stock Watcher, atomically deduplicates each X post with SQLite, and delivers a fixed Discord embed through a server-side webhook. Failed deliveries remain in a database-backed outbox and retry automatically after restarts.
+The relay accepts structured subscriber-only stock signals from X Stock Watcher, resolves each user-provided Discord webhook to its real channel ID, atomically deduplicates each X post per channel with SQLite, and delivers a fixed Discord embed. Failed deliveries remain in a database-backed outbox and retry automatically after restarts.
 
 The relay never needs X cookies, an AI API key, or the full subscriber-only post text and images.
 
@@ -24,8 +24,6 @@ Copy `.env.example` to `.env` and set:
 ```dotenv
 LISTEN_ADDR=127.0.0.1:8787
 DATABASE_PATH=./data/relay.db
-DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/WEBHOOK_ID/WEBHOOK_TOKEN
-DISCORD_CHANNEL_KEY=main
 INGEST_TOKENS=one-long-random-token,another-token-if-needed
 DAILY_TOKEN_LIMIT=200
 ```
@@ -79,7 +77,8 @@ Then open the extension and set:
 1. **Send subscriber-only signals to Discord**: enabled
 2. **Relay server URL**: `https://notify.example.com`
 3. **Relay access token**: one value from `INGEST_TOKENS`
-4. Click **Send Discord test message**
+4. **Discord channel webhook URL**: create a webhook in that channel's Discord integrations and paste its URL
+5. Click **Send Discord test message**
 
 Only new posts are sent. The first scan of an account establishes a baseline without Discord delivery.
 
@@ -88,7 +87,7 @@ Only new posts are sent. The first scan of an account establishes a baseline wit
 `POST /v1/subscriber-signals` requires `Authorization: Bearer <token>` and accepts at most 16 KiB. The server validates the X URL, post ID, handle, signal classification, and subscriber-only flag. The unique key is:
 
 ```text
-DISCORD_CHANNEL_KEY + X post ID
+Discord channel ID + X post ID
 ```
 
 The first valid report returns HTTP `202` with `accepted`; later reports return HTTP `200` with `duplicate`. Discord `429` responses use Discord's requested retry interval. Authentication, permission, and missing-webhook responses become permanent failures; other failures retry up to eight times.
@@ -98,8 +97,8 @@ The first valid report returns HTTP `202` with `accepted`; later reports return 
 - Back up the SQLite database together with its WAL files, or use SQLite's online backup mechanism.
 - Monitor `/healthz`, process uptime, disk space, and logs.
 - Rotate a compromised token by replacing it in `INGEST_TOKENS` and restarting the service.
-- Rotate a compromised Discord webhook in Discord and update `DISCORD_WEBHOOK_URL`.
+- Rotate a compromised Discord webhook in Discord and update it in the affected extension installation.
 - Periodically remove old `sent` and `dead` rows according to your retention policy.
-- Never commit `.env`, the SQLite database, relay tokens, or Discord webhook URLs.
+- Never commit `.env`, the SQLite database, relay tokens, or Discord webhook URLs. The database contains queued webhook URLs, so protect and back it up as sensitive data.
 
 Subscriber-only content should be delivered only to an appropriately restricted channel. The relay intentionally sends a short signal summary and original link rather than republishing the paid post.

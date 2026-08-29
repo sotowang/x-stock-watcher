@@ -20,7 +20,8 @@ function render() {
   $("discordEnabled").checked = state.discordEnabled;
   $("discordRelayEndpoint").value = state.discordRelayEndpoint;
   $("discordRelayToken").value = state.discordRelayToken;
-  $("testDiscord").disabled = !state.discordRelayEndpoint || !state.discordRelayToken;
+  $("discordWebhookURL").value = state.discordWebhookURL;
+  $("testDiscord").disabled = !state.discordRelayEndpoint || !state.discordRelayToken || !state.discordWebhookURL;
   $("toggle").textContent = state.running ? "Stop monitoring" : "Start monitoring";
   $("toggle").className = state.running ? "danger" : "primary";
   $("handles").innerHTML = state.handles.length
@@ -76,6 +77,10 @@ async function ensureRelayPermission() {
     $("message").textContent = "Enter the relay access token";
     return false;
   }
+  if (!/^https:\/\/(?:discord|discordapp)\.com\/api\/webhooks\//i.test($("discordWebhookURL").value.trim())) {
+    $("message").textContent = "Enter a valid Discord channel webhook URL";
+    return false;
+  }
   if (await chrome.permissions.contains({ origins: [origin] })) return true;
   const granted = await chrome.permissions.request({ origins: [origin] });
   if (!granted) $("message").textContent = "Relay server access was denied";
@@ -95,10 +100,10 @@ $("handles").addEventListener("click", async event => {
   if (handle) await save({ handles: state.handles.filter(item => item !== handle) });
 });
 
-for (const id of ["interval", "maxAgeDays", "useAI", "aiEndpoint", "aiModel", "aiApiKey", "discordEnabled", "discordRelayEndpoint", "discordRelayToken"]) {
+for (const id of ["interval", "maxAgeDays", "useAI", "aiEndpoint", "aiModel", "aiApiKey", "discordEnabled", "discordRelayEndpoint", "discordRelayToken", "discordWebhookURL"]) {
   $(id).addEventListener("change", async () => {
     if ((id === "useAI" || id === "aiEndpoint") && !(await ensureEndpointPermission())) return;
-    if (["discordEnabled", "discordRelayEndpoint"].includes(id) && $("discordEnabled").checked && !(await ensureRelayPermission())) { render(); return; }
+    if (["discordEnabled", "discordRelayEndpoint", "discordWebhookURL"].includes(id) && $("discordEnabled").checked && !(await ensureRelayPermission())) { render(); return; }
     await save({
       intervalMinutes: Number($("interval").value),
       maxAgeDays: Number($("maxAgeDays").value),
@@ -108,7 +113,8 @@ for (const id of ["interval", "maxAgeDays", "useAI", "aiEndpoint", "aiModel", "a
       aiApiKey: $("aiApiKey").value.trim(),
       discordEnabled: $("discordEnabled").checked,
       discordRelayEndpoint: relayEndpoint(),
-      discordRelayToken: $("discordRelayToken").value.trim()
+      discordRelayToken: $("discordRelayToken").value.trim(),
+      discordWebhookURL: $("discordWebhookURL").value.trim()
     });
   });
 }
@@ -119,7 +125,8 @@ $("testDiscord").addEventListener("click", async () => {
   const result = await chrome.runtime.sendMessage({
     type: "TEST_DISCORD_RELAY",
     endpoint: relayEndpoint(),
-    token: $("discordRelayToken").value.trim()
+    token: $("discordRelayToken").value.trim(),
+    webhookUrl: $("discordWebhookURL").value.trim()
   });
   $("message").textContent = result.ok ? "Discord test message sent." : `Discord test failed: ${result.error}`;
 });
