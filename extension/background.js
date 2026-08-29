@@ -317,9 +317,8 @@ function normalizedRelayEndpoint(endpoint = "") {
   return trimmed;
 }
 
-function relayPayload(post, minimumConfidence) {
+function relayPayload(post) {
   const signals = (post.analysis?.signals || [])
-    .filter(signal => Number(signal.confidence) >= minimumConfidence)
     .slice(0, 10)
     .map(signal => ({
       ticker: signal.ticker,
@@ -342,7 +341,7 @@ function relayPayload(post, minimumConfidence) {
 
 async function enqueueDiscordSignal(post, config) {
   if (!config.discordEnabled) return;
-  const payload = relayPayload(post, Number(config.discordMinConfidence) || 0.7);
+  const payload = relayPayload(post);
   if (!payload) return;
   const { discordOutbox = [] } = await chrome.storage.local.get({ discordOutbox: [] });
   if (discordOutbox.some(item => item.postId === payload.postId)) return;

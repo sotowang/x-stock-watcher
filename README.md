@@ -42,7 +42,7 @@ If AI is disabled, permission is denied, or the request fails, the extension fal
 - Replies and reposts are excluded to keep results focused on the monitored author's original posts.
 - Signals and the latest 500 decision logs are stored locally in Chrome.
 - The dashboard supports combined ticker, account, action, type, and direction filters; sortable table columns; original-post links; and filtered CSV export.
-- Optionally sends new subscriber-only signals above a configurable confidence threshold to the included self-hosted Discord relay. Historical baseline posts are never sent.
+- Optionally sends every valid signal found in new subscriber-only posts to the included self-hosted Discord relay. Historical baseline posts are never sent.
 
 ## Discord relay
 

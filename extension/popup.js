@@ -20,7 +20,6 @@ function render() {
   $("discordEnabled").checked = state.discordEnabled;
   $("discordRelayEndpoint").value = state.discordRelayEndpoint;
   $("discordRelayToken").value = state.discordRelayToken;
-  $("discordMinConfidence").value = String(state.discordMinConfidence);
   $("testDiscord").disabled = !state.discordRelayEndpoint || !state.discordRelayToken;
   $("toggle").textContent = state.running ? "Stop monitoring" : "Start monitoring";
   $("toggle").className = state.running ? "danger" : "primary";
@@ -96,7 +95,7 @@ $("handles").addEventListener("click", async event => {
   if (handle) await save({ handles: state.handles.filter(item => item !== handle) });
 });
 
-for (const id of ["interval", "maxAgeDays", "useAI", "aiEndpoint", "aiModel", "aiApiKey", "discordEnabled", "discordRelayEndpoint", "discordRelayToken", "discordMinConfidence"]) {
+for (const id of ["interval", "maxAgeDays", "useAI", "aiEndpoint", "aiModel", "aiApiKey", "discordEnabled", "discordRelayEndpoint", "discordRelayToken"]) {
   $(id).addEventListener("change", async () => {
     if ((id === "useAI" || id === "aiEndpoint") && !(await ensureEndpointPermission())) return;
     if (["discordEnabled", "discordRelayEndpoint"].includes(id) && $("discordEnabled").checked && !(await ensureRelayPermission())) { render(); return; }
@@ -109,8 +108,7 @@ for (const id of ["interval", "maxAgeDays", "useAI", "aiEndpoint", "aiModel", "a
       aiApiKey: $("aiApiKey").value.trim(),
       discordEnabled: $("discordEnabled").checked,
       discordRelayEndpoint: relayEndpoint(),
-      discordRelayToken: $("discordRelayToken").value.trim(),
-      discordMinConfidence: Number($("discordMinConfidence").value) || 0.7
+      discordRelayToken: $("discordRelayToken").value.trim()
     });
   });
 }

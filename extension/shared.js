@@ -10,7 +10,6 @@ export const DEFAULTS = {
   discordEnabled: false,
   discordRelayEndpoint: "",
   discordRelayToken: "",
-  discordMinConfidence: 0.7,
   discordOutbox: [],
   posts: [],
   logs: [],

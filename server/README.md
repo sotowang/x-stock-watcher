@@ -79,8 +79,7 @@ Then open the extension and set:
 1. **Send subscriber-only signals to Discord**: enabled
 2. **Relay server URL**: `https://notify.example.com`
 3. **Relay access token**: one value from `INGEST_TOKENS`
-4. **Minimum Discord confidence**: your preferred threshold
-5. Click **Send Discord test message**
+4. Click **Send Discord test message**
 
 Only new posts are sent. The first scan of an account establishes a baseline without Discord delivery.
 
@@ -104,4 +103,3 @@ The first valid report returns HTTP `202` with `accepted`; later reports return 
 - Never commit `.env`, the SQLite database, relay tokens, or Discord webhook URLs.
 
 Subscriber-only content should be delivered only to an appropriately restricted channel. The relay intentionally sends a short signal summary and original link rather than republishing the paid post.
-
