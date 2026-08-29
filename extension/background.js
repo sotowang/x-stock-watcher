@@ -106,8 +106,9 @@ async function pollHandle(handle, config) {
       timeout: "reached the 3-minute scan limit"
     };
     const subscriberCount = (response.posts || []).filter(post => post.isSubscriberOnly).length;
-    await appendLogs([{ handle, status: "scraped", reason: `Read ${response.posts?.length || 0} unique post(s) across ${response.scrollSteps || 0} incremental scroll step(s), observing ${response.renderedArticles || 0} rendered card(s) in total (${subscriberCount} subscriber-only); ${stopLabels[response.stopReason] || "scan completed"}. Previously checked posts were skipped without stopping the scan.`, text: "", postId: null, url: `https://x.com/${handle}` }]);
-    return await ingestPosts(handle, response.posts || [], config);
+    const found = await ingestPosts(handle, response.posts || [], config);
+    await appendLogs([{ handle, status: "scraped", reason: `Read ${response.posts?.length || 0} unique post(s) across ${response.scrollSteps || 0} incremental scroll step(s), observing ${response.renderedArticles || 0} rendered card(s) in total (${subscriberCount} subscriber-only); ${found} new valid signal post(s) recorded. ${stopLabels[response.stopReason] || "Scan completed"}. Per-post results are listed directly below this summary.`, text: "", postId: null, url: `https://x.com/${handle}` }]);
+    return found;
   } finally {
     if (tab?.id) {
       await chrome.tabs.remove(tab.id).catch(() => {});
