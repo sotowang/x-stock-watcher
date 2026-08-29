@@ -13,8 +13,6 @@ function render() {
   $("statusText").textContent = state.running ? "Monitoring" : "Stopped";
   $("interval").value = String(state.intervalMinutes);
   $("maxAgeDays").value = String(state.maxAgeDays);
-  $("includeReplies").checked = state.includeReplies;
-  $("includeReposts").checked = state.includeReposts;
   $("useAI").checked = state.useAI;
   $("aiEndpoint").value = state.aiEndpoint;
   $("aiApiKey").value = state.aiApiKey;
@@ -71,14 +69,12 @@ $("handles").addEventListener("click", async event => {
   if (handle) await save({ handles: state.handles.filter(item => item !== handle) });
 });
 
-for (const id of ["interval", "maxAgeDays", "includeReplies", "includeReposts", "useAI", "aiEndpoint", "aiModel", "aiApiKey"]) {
+for (const id of ["interval", "maxAgeDays", "useAI", "aiEndpoint", "aiModel", "aiApiKey"]) {
   $(id).addEventListener("change", async () => {
     if ((id === "useAI" || id === "aiEndpoint") && !(await ensureEndpointPermission())) return;
     await save({
     intervalMinutes: Number($("interval").value),
     maxAgeDays: Number($("maxAgeDays").value),
-    includeReplies: $("includeReplies").checked,
-    includeReposts: $("includeReposts").checked,
     useAI: $("useAI").checked,
     aiEndpoint: $("aiEndpoint").value.trim(),
     aiModel: $("aiModel").value.trim() || "agnes-2.5-flash",

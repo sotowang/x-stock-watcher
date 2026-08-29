@@ -8,6 +8,7 @@ const startupCleanup = cleanupOrphanedScanTabs();
 chrome.runtime.onInstalled.addListener(async () => {
   const current = await chrome.storage.local.get(DEFAULTS);
   await chrome.storage.local.set(current);
+  await chrome.storage.local.remove(["includeReplies", "includeReposts"]);
 });
 
 chrome.alarms.onAlarm.addListener(alarm => {
@@ -151,8 +152,8 @@ async function ingestPosts(expectedHandle, scraped, config) {
     let reason = "";
     if (post.handle.toLowerCase() !== expectedHandle.toLowerCase()) reason = `Author mismatch: @${post.handle}`;
     else if (post.isPinned) reason = "Pinned posts do not act as a stopping boundary";
-    else if (!config.includeReplies && post.isReply) reason = "Reply excluded";
-    else if (!config.includeReposts && post.isRepost) reason = "Repost excluded";
+    else if (post.isReply) reason = "Reply excluded";
+    else if (post.isRepost) reason = "Repost excluded";
     if (reason) {
       filterLogs.push(postLog(post, expectedHandle, "filtered", reason));
       continue;

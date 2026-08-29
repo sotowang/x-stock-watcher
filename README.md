@@ -39,7 +39,7 @@ If AI is disabled, permission is denied, or the request fails, the extension fal
 - Captures subscriber-only posts visible to the signed-in X account, labels their dashboard signals as **Subscriber-only**, includes the flag in CSV exports, expands rendered long-post controls, and can extract multiple ticker signals from one post.
 - Skips previously checked posts without stopping.
 - Stops at the configured lookback boundary, after 500 posts, after three minutes, or when X repeatedly loads no additional posts.
-- Replies and reposts can be included or excluded.
+- Replies and reposts are excluded to keep results focused on the monitored author's original posts.
 - Signals and the latest 500 decision logs are stored locally in Chrome.
 - The dashboard supports combined ticker, account, action, type, and direction filters; sortable table columns; original-post links; and filtered CSV export.
 

@@ -3,8 +3,6 @@ export const DEFAULTS = {
   intervalMinutes: 2,
   maxAgeDays: 1,
   running: false,
-  includeReplies: false,
-  includeReposts: false,
   useAI: true,
   aiEndpoint: "https://apihub.agnes-ai.com/v1/chat/completions",
   aiApiKey: "",
