@@ -13,15 +13,15 @@ function render() {
   $("statusText").textContent = state.running ? "Monitoring" : "Stopped";
   $("interval").value = String(state.intervalMinutes);
   $("maxAgeDays").value = String(state.maxAgeDays);
-  $("useAI").checked = state.useAI;
   $("aiEndpoint").value = state.aiEndpoint;
   $("aiApiKey").value = state.aiApiKey;
   $("aiModel").value = state.aiModel;
-  $("discordEnabled").checked = state.discordEnabled;
-  $("discordStateHint").textContent = state.discordEnabled
-    ? "Automatic delivery is ON. Unsent subscriber-only signals will be queued."
-    : "Automatic delivery is OFF. A test message can still succeed while signals are not sent.";
-  $("discordStateHint").classList.toggle("warning", !state.discordEnabled);
+  $("aiDetails").open = state.useAI;
+  $("aiState").textContent = state.useAI ? "ON" : "Not configured";
+  $("aiState").classList.toggle("active", state.useAI);
+  $("discordDetails").open = state.discordEnabled;
+  $("discordState").textContent = state.discordEnabled ? "ON" : "Not configured";
+  $("discordState").classList.toggle("active", state.discordEnabled);
   $("discordWebhookURL").value = state.discordWebhookURL;
   $("testDiscord").disabled = !state.discordWebhookURL;
   $("toggle").textContent = state.running ? "Stop monitoring" : "Start monitoring";
@@ -51,7 +51,7 @@ function endpointPattern(endpoint) {
 }
 
 async function ensureEndpointPermission() {
-  if (!$("useAI").checked) return true;
+  if (!$("aiApiKey").value.trim()) return true;
   const origin = endpointPattern($("aiEndpoint").value.trim());
   if (!origin) {
     $("message").textContent = "Enter a valid HTTPS AI endpoint";
@@ -65,6 +65,7 @@ async function ensureEndpointPermission() {
 
 async function ensureDiscordPermission() {
   const webhook = $("discordWebhookURL").value.trim();
+  if (!webhook) return true;
   if (!/^https:\/\/(?:discord|discordapp)\.com\/api\/webhooks\/[0-9]+\/[A-Za-z0-9._-]+/i.test(webhook)) {
     $("message").textContent = "Enter a valid Discord channel webhook URL";
     return false;
@@ -89,18 +90,20 @@ $("handles").addEventListener("click", async event => {
   if (handle) await save({ handles: state.handles.filter(item => item !== handle) });
 });
 
-for (const id of ["interval", "maxAgeDays", "useAI", "aiEndpoint", "aiModel", "aiApiKey", "discordEnabled", "discordWebhookURL"]) {
+for (const id of ["interval", "maxAgeDays", "aiEndpoint", "aiModel", "aiApiKey", "discordWebhookURL"]) {
   $(id).addEventListener("change", async () => {
-    if ((id === "useAI" || id === "aiEndpoint") && !(await ensureEndpointPermission())) return;
-    if (["discordEnabled", "discordWebhookURL"].includes(id) && $("discordEnabled").checked && !(await ensureDiscordPermission())) { render(); return; }
+    if (["aiEndpoint", "aiApiKey"].includes(id) && !(await ensureEndpointPermission())) { render(); return; }
+    if (id === "discordWebhookURL" && !(await ensureDiscordPermission())) { render(); return; }
+    const useAI = Boolean($("aiEndpoint").value.trim() && $("aiApiKey").value.trim());
+    const discordEnabled = Boolean($("discordWebhookURL").value.trim());
     await save({
       intervalMinutes: Number($("interval").value),
       maxAgeDays: Number($("maxAgeDays").value),
-      useAI: $("useAI").checked,
+      useAI,
       aiEndpoint: $("aiEndpoint").value.trim(),
       aiModel: $("aiModel").value.trim() || "agnes-2.5-flash",
       aiApiKey: $("aiApiKey").value.trim(),
-      discordEnabled: $("discordEnabled").checked,
+      discordEnabled,
       discordWebhookURL: $("discordWebhookURL").value.trim()
     });
   });
@@ -113,9 +116,7 @@ $("testDiscord").addEventListener("click", async () => {
     type: "TEST_DISCORD",
     webhookUrl: $("discordWebhookURL").value.trim()
   });
-  $("message").textContent = result.ok
-    ? ($("discordEnabled").checked ? "Discord test message sent. Automatic delivery is ON." : "Discord test message sent, but automatic delivery is still OFF.")
-    : `Discord test failed: ${result.error}`;
+  $("message").textContent = result.ok ? "Discord test message sent. Automatic delivery is ON." : `Discord test failed: ${result.error}`;
 });
 
 $("toggle").addEventListener("click", async () => {

@@ -23,8 +23,13 @@ export function normalizeHandle(value) {
     .replace(/^@/, "").split(/[/?#]/)[0].replace(/[^A-Za-z0-9_]/g, "").slice(0, 15);
 }
 
-export function storageGet() {
-  return chrome.storage.local.get(DEFAULTS);
+export async function storageGet() {
+  const state = await chrome.storage.local.get(DEFAULTS);
+  return {
+    ...state,
+    useAI: Boolean(state.aiEndpoint && state.aiApiKey),
+    discordEnabled: Boolean(state.discordWebhookURL)
+  };
 }
 
 export function escapeHtml(value = "") {
