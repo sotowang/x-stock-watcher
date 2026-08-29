@@ -20,6 +20,7 @@ Key features:
 - Limit scanning to posts from the last 1, 3, 7, 14, or 30 days.
 - Continue past previously checked posts until reaching the configured time boundary.
 - Analyze subscriber-only posts that your X account is authorized to view.
+- Clearly label subscriber-only signals and optionally send new qualifying signals to a self-hosted Discord relay without transferring the full post text or images.
 - Extract multiple tickers and signals from long posts.
 - Classify trade, recommendation, and forecast signals.
 - Identify long/short direction and buy, add, hold, sell, short, cover, or forecast actions.
@@ -51,10 +52,9 @@ Monitor user-selected X profiles and organize stock-related posts into locally s
 
 - `storage`: Save settings, monitored accounts, extracted signals, and logs locally.
 - `alarms`: Run checks at the interval selected by the user.
-- `tabs`: Open inactive X profile tabs for scanning, close them afterward, and open the dashboard or original posts.
 - `notifications`: Notify the user when a new valid stock signal is detected.
 - `https://x.com/*`: Read only the X profile and post pages required for monitoring.
-- Optional `https://*/*`: Requested for only the user-entered AI endpoint domain so post text can be analyzed directly by that provider.
+- Optional `https://*/*`: Requested only for HTTPS domains explicitly entered and approved by the user: an AI endpoint for direct analysis and, when enabled, a self-hosted relay for structured Discord signal delivery.
 
 ## Test instructions
 
@@ -63,3 +63,4 @@ Monitor user-selected X profiles and organize stock-related posts into locally s
 3. Disable AI analysis to test the local rules without credentials, or configure a reviewer-controlled OpenAI-compatible HTTPS endpoint.
 4. Click Check now.
 5. Open the signal dashboard to review results and logs.
+6. Optional Discord test: enter a reviewer-controlled relay URL and token, grant access to that HTTPS domain, and click Send Discord test message.

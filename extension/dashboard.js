@@ -89,7 +89,7 @@ function renderLogs(query) {
 }
 
 function logRow(log) {
-  const labels={recorded:"Recorded",ignored:"AI ignored",filtered:"Filtered",duplicate:"Already checked",boundary:"Time boundary",scraped:"Scrape summary",error:"Error"};
+  const labels={recorded:"Recorded",ignored:"AI ignored",filtered:"Filtered",duplicate:"Already checked",boundary:"Time boundary",scraped:"Scrape summary",discord_sent:"Discord queued",discord_duplicate:"Discord duplicate",discord_error:"Discord error",error:"Error"};
   const url=log.url||`https://x.com/${log.handle}`;
   const time=new Date(log.at);
   const displayTime=Number.isNaN(time.getTime())?"—":time.toLocaleString();

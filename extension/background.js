@@ -28,6 +28,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     chrome.tabs.create({ url: chrome.runtime.getURL("dashboard.html") });
     sendResponse({ ok: true });
   }
+  if (message?.type === "TEST_DISCORD_RELAY") {
+    testDiscordRelay(message.endpoint, message.token).then(result => sendResponse(result));
+    return true;
+  }
 });
 
 async function configureAlarm() {
@@ -62,6 +66,7 @@ async function pollAll() {
       }
       await delay(1200);
     }
+    await flushDiscordOutbox(await storageGet());
     await chrome.storage.local.set({ lastRunAt: new Date().toISOString(), lastError });
     return { ok: true, found, lastError };
   } finally {
@@ -181,7 +186,10 @@ async function ingestPosts(expectedHandle, scraped, config) {
     const record = { ...post, analysis, capturedAt: new Date().toISOString(), baseline: firstRun };
     analyzed.push(record);
     analysisLogs.push(postLog(post, expectedHandle, "recorded", `${post.isSubscriberOnly ? "Subscriber post · " : ""}${signalSummary(analysis)}`));
-    if (!firstRun) await notify(record);
+    if (!firstRun) {
+      await notify(record);
+      await enqueueDiscordSignal(record, config);
+    }
   }
   if (analysisLogs.length) await appendLogs(analysisLogs);
 
@@ -300,6 +308,101 @@ function postLog(post, handle, status, reason) {
 
 function signalSummary(analysis) {
   return analysis.signals.map(signal => `${signal.ticker} / ${signal.direction} / ${signal.action}`).join("; ");
+}
+
+function normalizedRelayEndpoint(endpoint = "") {
+  const trimmed = endpoint.trim().replace(/\/+$/, "");
+  const parsed = new URL(trimmed);
+  if (parsed.protocol !== "https:") throw new Error("Relay server must use HTTPS");
+  return trimmed;
+}
+
+function relayPayload(post, minimumConfidence) {
+  const signals = (post.analysis?.signals || [])
+    .filter(signal => Number(signal.confidence) >= minimumConfidence)
+    .slice(0, 10)
+    .map(signal => ({
+      ticker: signal.ticker,
+      type: signal.signal_type,
+      direction: signal.direction,
+      action: signal.action,
+      confidence: Number(signal.confidence) || 0,
+      conclusion: String(signal.conclusion || "").slice(0, 500)
+    }));
+  if (!post.isSubscriberOnly || !signals.length) return null;
+  return {
+    postId: post.id,
+    handle: post.handle,
+    postUrl: post.url,
+    postTime: post.time || post.capturedAt,
+    subscriberOnly: true,
+    signals
+  };
+}
+
+async function enqueueDiscordSignal(post, config) {
+  if (!config.discordEnabled) return;
+  const payload = relayPayload(post, Number(config.discordMinConfidence) || 0.7);
+  if (!payload) return;
+  const { discordOutbox = [] } = await chrome.storage.local.get({ discordOutbox: [] });
+  if (discordOutbox.some(item => item.postId === payload.postId)) return;
+  if (discordOutbox.length >= 200) {
+    await appendLogs([{ handle: post.handle, status: "discord_error", reason: "Discord outbox is full; signal was not queued", text: "", postId: post.id, url: post.url }]);
+    return;
+  }
+  const entry = { postId: payload.postId, handle: post.handle, payload, attempts: 0, nextAttemptAt: 0 };
+  await chrome.storage.local.set({ discordOutbox: [...discordOutbox, entry] });
+}
+
+async function flushDiscordOutbox(config) {
+  if (!config.discordEnabled || !config.discordRelayEndpoint || !config.discordRelayToken) return;
+  let endpoint;
+  try { endpoint = normalizedRelayEndpoint(config.discordRelayEndpoint); }
+  catch (error) {
+    await appendLogs([{ handle: "Discord", status: "discord_error", reason: error.message, text: "", postId: null, url: "" }]);
+    return;
+  }
+  const now = Date.now();
+  const remaining = [];
+  const deliveryLogs = [];
+  let attempted = 0;
+  for (const item of config.discordOutbox || []) {
+    if ((item.nextAttemptAt || 0) > now || attempted >= 20) { remaining.push(item); continue; }
+    attempted++;
+    try {
+      const response = await fetch(`${endpoint}/v1/subscriber-signals`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.discordRelayToken}` },
+        body: JSON.stringify(item.payload)
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || `Relay returned HTTP ${response.status}`);
+      deliveryLogs.push({ handle: item.handle, status: result.status === "duplicate" ? "discord_duplicate" : "discord_sent", reason: result.status === "duplicate" ? "Discord relay already accepted this post" : "Subscriber-only signal queued for Discord", text: "", postId: item.postId, url: item.payload.postUrl });
+    } catch (error) {
+      const attempts = (item.attempts || 0) + 1;
+      const retryMinutes = Math.min(60, 2 ** Math.min(attempts, 6));
+      remaining.push({ ...item, attempts, nextAttemptAt: now + retryMinutes * 60000 });
+      deliveryLogs.push({ handle: item.handle, status: "discord_error", reason: `${error.message}; retry scheduled`, text: "", postId: item.postId, url: item.payload.postUrl });
+    }
+  }
+  await chrome.storage.local.set({ discordOutbox: remaining });
+  if (deliveryLogs.length) await appendLogs(deliveryLogs);
+}
+
+async function testDiscordRelay(endpoint, token) {
+  try {
+    endpoint = normalizedRelayEndpoint(endpoint);
+    const response = await fetch(`${endpoint}/v1/test`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: "{}"
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || `Relay returned HTTP ${response.status}`);
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: error.message };
+  }
 }
 
 async function appendLogs(entries) {

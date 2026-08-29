@@ -17,6 +17,11 @@ function render() {
   $("aiEndpoint").value = state.aiEndpoint;
   $("aiApiKey").value = state.aiApiKey;
   $("aiModel").value = state.aiModel;
+  $("discordEnabled").checked = state.discordEnabled;
+  $("discordRelayEndpoint").value = state.discordRelayEndpoint;
+  $("discordRelayToken").value = state.discordRelayToken;
+  $("discordMinConfidence").value = String(state.discordMinConfidence);
+  $("testDiscord").disabled = !state.discordRelayEndpoint || !state.discordRelayToken;
   $("toggle").textContent = state.running ? "Stop monitoring" : "Start monitoring";
   $("toggle").className = state.running ? "danger" : "primary";
   $("handles").innerHTML = state.handles.length
@@ -43,6 +48,10 @@ function endpointPattern(endpoint) {
   }
 }
 
+function relayEndpoint() {
+  return $("discordRelayEndpoint").value.trim().replace(/\/+$/, "");
+}
+
 async function ensureEndpointPermission() {
   if (!$("useAI").checked) return true;
   const origin = endpointPattern($("aiEndpoint").value.trim());
@@ -53,6 +62,24 @@ async function ensureEndpointPermission() {
   if (await chrome.permissions.contains({ origins: [origin] })) return true;
   const granted = await chrome.permissions.request({ origins: [origin] });
   if (!granted) $("message").textContent = "AI endpoint access was denied; local rules will be used";
+  return granted;
+}
+
+async function ensureRelayPermission() {
+  if (!$("discordEnabled").checked && !$("discordRelayEndpoint").value.trim()) return true;
+  const endpoint = relayEndpoint();
+  const origin = endpointPattern(endpoint);
+  if (!origin || !endpoint) {
+    $("message").textContent = "Enter a valid HTTPS relay server URL";
+    return false;
+  }
+  if (!$("discordRelayToken").value.trim()) {
+    $("message").textContent = "Enter the relay access token";
+    return false;
+  }
+  if (await chrome.permissions.contains({ origins: [origin] })) return true;
+  const granted = await chrome.permissions.request({ origins: [origin] });
+  if (!granted) $("message").textContent = "Relay server access was denied";
   return granted;
 }
 
@@ -69,19 +96,35 @@ $("handles").addEventListener("click", async event => {
   if (handle) await save({ handles: state.handles.filter(item => item !== handle) });
 });
 
-for (const id of ["interval", "maxAgeDays", "useAI", "aiEndpoint", "aiModel", "aiApiKey"]) {
+for (const id of ["interval", "maxAgeDays", "useAI", "aiEndpoint", "aiModel", "aiApiKey", "discordEnabled", "discordRelayEndpoint", "discordRelayToken", "discordMinConfidence"]) {
   $(id).addEventListener("change", async () => {
     if ((id === "useAI" || id === "aiEndpoint") && !(await ensureEndpointPermission())) return;
+    if (["discordEnabled", "discordRelayEndpoint"].includes(id) && $("discordEnabled").checked && !(await ensureRelayPermission())) { render(); return; }
     await save({
-    intervalMinutes: Number($("interval").value),
-    maxAgeDays: Number($("maxAgeDays").value),
-    useAI: $("useAI").checked,
-    aiEndpoint: $("aiEndpoint").value.trim(),
-    aiModel: $("aiModel").value.trim() || "agnes-2.5-flash",
-      aiApiKey: $("aiApiKey").value.trim()
+      intervalMinutes: Number($("interval").value),
+      maxAgeDays: Number($("maxAgeDays").value),
+      useAI: $("useAI").checked,
+      aiEndpoint: $("aiEndpoint").value.trim(),
+      aiModel: $("aiModel").value.trim() || "agnes-2.5-flash",
+      aiApiKey: $("aiApiKey").value.trim(),
+      discordEnabled: $("discordEnabled").checked,
+      discordRelayEndpoint: relayEndpoint(),
+      discordRelayToken: $("discordRelayToken").value.trim(),
+      discordMinConfidence: Number($("discordMinConfidence").value) || 0.7
     });
   });
 }
+
+$("testDiscord").addEventListener("click", async () => {
+  if (!(await ensureRelayPermission())) return;
+  $("message").textContent = "Sending Discord test message…";
+  const result = await chrome.runtime.sendMessage({
+    type: "TEST_DISCORD_RELAY",
+    endpoint: relayEndpoint(),
+    token: $("discordRelayToken").value.trim()
+  });
+  $("message").textContent = result.ok ? "Discord test message sent." : `Discord test failed: ${result.error}`;
+});
 
 $("toggle").addEventListener("click", async () => {
   if (!state.running && !state.handles.length) {
