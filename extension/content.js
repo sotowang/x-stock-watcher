@@ -4,7 +4,8 @@
   const activatedControls = new WeakSet();
 
   function statusIdFromArticle(article) {
-    const links = [...article.querySelectorAll('a[href*="/status/"]')];
+    const timeLink = article.querySelector("time")?.closest('a[href*="/status/"]');
+    const links = [timeLink, ...article.querySelectorAll('a[href*="/status/"]')].filter(Boolean);
     for (const link of links) {
       const match = link.getAttribute("href")?.match(/\/([^/]+)\/status\/(\d+)/);
       if (match) return { handle: match[1], id: match[2], url: new URL(link.href, location.origin).href };
@@ -12,12 +13,20 @@
     return null;
   }
 
+  function originalTextFromArticle(article) {
+    const nodes = [...article.querySelectorAll('[data-testid="tweetText"]')]
+      .filter(node => !node.parentElement?.closest('[data-testid="tweetText"]'));
+    const texts = [...new Set(nodes.map(node => node.innerText.trim()).filter(Boolean))];
+    // After “Show original”, X may keep both the author's text and its
+    // automatic translation in the DOM. The original is rendered first.
+    return texts[0] || "";
+  }
+
   function scrape() {
     return [...document.querySelectorAll('article[data-testid="tweet"]')].map(article => {
       const identity = statusIdFromArticle(article);
       if (!identity) return null;
-      const text = [...article.querySelectorAll('[data-testid="tweetText"]')]
-        .map(node => node.innerText.trim()).filter(Boolean).join("\n");
+      const text = originalTextFromArticle(article);
       const timeNode = article.querySelector("time");
       const time = timeNode?.getAttribute("datetime") || timeNode?.dateTime || null;
       const isRepost = /reposted|转发了|轉發了/i.test(article.innerText.split("\n").slice(0, 3).join(" "));
@@ -64,6 +73,8 @@
     const collected = new Map();
     const cutoff = Date.now() - Math.max(1, Number(message.maxAgeDays) || 1) * 86400000;
     let unchangedRounds = 0;
+    let scrollSteps = 0;
+    let renderedArticles = 0;
     const poll = () => {
       const contentExpanded = revealPostContent();
       if (contentExpanded) {
@@ -71,20 +82,28 @@
         return;
       }
       const previousSize = collected.size;
-      for (const post of scrape()) collected.set(post.id, post);
+      const visiblePosts = scrape();
+      renderedArticles += document.querySelectorAll('article[data-testid="tweet"]').length;
+      for (const post of visiblePosts) collected.set(post.id, post);
       unchangedRounds = collected.size === previousSize ? unchangedRounds + 1 : 0;
       const chronological = [...collected.values()].filter(post => !post.isPinned);
-      const reachedCutoff = chronological.some(post => post.time && new Date(post.time).getTime() < cutoff);
+      const olderThanCutoff = chronological.filter(post => post.time && new Date(post.time).getTime() < cutoff).length;
+      // Requiring more than one old post avoids stopping on a single
+      // out-of-order module while the profile still has in-range posts below.
+      const reachedCutoff = olderThanCutoff >= 2;
       const stopReason = reachedCutoff ? "time_boundary"
         : collected.size >= 500 ? "safety_limit"
         : unchangedRounds >= 20 ? "end_of_feed"
         : Date.now() >= deadline ? "timeout"
         : "";
       if (stopReason) {
-        sendResponse({ posts: [...collected.values()], title: document.title, url: location.href, stopReason });
+        sendResponse({ posts: [...collected.values()], title: document.title, url: location.href, stopReason, scrollSteps, renderedArticles });
       } else {
-        window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "instant" });
-        setTimeout(poll, 1500);
+        // X virtualizes its timeline. Small steps ensure intermediate cards are
+        // rendered and observed instead of being skipped by a jump to the end.
+        window.scrollBy({ top: Math.max(600, Math.floor(window.innerHeight * 0.8)), behavior: "instant" });
+        scrollSteps++;
+        setTimeout(poll, 1100);
       }
     };
     poll();

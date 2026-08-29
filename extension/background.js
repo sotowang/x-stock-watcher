@@ -106,7 +106,7 @@ async function pollHandle(handle, config) {
       timeout: "reached the 3-minute scan limit"
     };
     const subscriberCount = (response.posts || []).filter(post => post.isSubscriberOnly).length;
-    await appendLogs([{ handle, status: "scraped", reason: `Read ${response.posts?.length || 0} post(s) while scrolling down (${subscriberCount} subscriber-only); ${stopLabels[response.stopReason] || "scan completed"}. Previously checked posts were skipped without stopping the scan.`, text: "", postId: null, url: `https://x.com/${handle}` }]);
+    await appendLogs([{ handle, status: "scraped", reason: `Read ${response.posts?.length || 0} unique post(s) across ${response.scrollSteps || 0} incremental scroll step(s), observing ${response.renderedArticles || 0} rendered card(s) in total (${subscriberCount} subscriber-only); ${stopLabels[response.stopReason] || "scan completed"}. Previously checked posts were skipped without stopping the scan.`, text: "", postId: null, url: `https://x.com/${handle}` }]);
     return await ingestPosts(handle, response.posts || [], config);
   } finally {
     if (tab?.id) {
