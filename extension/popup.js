@@ -18,6 +18,10 @@ function render() {
   $("aiApiKey").value = state.aiApiKey;
   $("aiModel").value = state.aiModel;
   $("discordEnabled").checked = state.discordEnabled;
+  $("discordStateHint").textContent = state.discordEnabled
+    ? "Automatic delivery is ON. Unsent subscriber-only signals will be queued."
+    : "Automatic delivery is OFF. A test message can still succeed while signals are not sent.";
+  $("discordStateHint").classList.toggle("warning", !state.discordEnabled);
   $("discordWebhookURL").value = state.discordWebhookURL;
   $("testDiscord").disabled = !state.discordWebhookURL;
   $("toggle").textContent = state.running ? "Stop monitoring" : "Start monitoring";
@@ -109,7 +113,9 @@ $("testDiscord").addEventListener("click", async () => {
     type: "TEST_DISCORD",
     webhookUrl: $("discordWebhookURL").value.trim()
   });
-  $("message").textContent = result.ok ? "Discord test message sent." : `Discord test failed: ${result.error}`;
+  $("message").textContent = result.ok
+    ? ($("discordEnabled").checked ? "Discord test message sent. Automatic delivery is ON." : "Discord test message sent, but automatic delivery is still OFF.")
+    : `Discord test failed: ${result.error}`;
 });
 
 $("toggle").addEventListener("click", async () => {
